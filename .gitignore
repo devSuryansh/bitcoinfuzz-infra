@@ -1,0 +1,51 @@
+*.a
+*.o
+build/
+target/
+node_modules/
+dist/
+.vscode
+bitcoinfuzz
+!bitcoinfuzz/
+bin/
+obj/
+*.dylib
+*.so
+*.jar
+*.zip
+__pycache__
+main.py
+pycoin_main.py
+corpus/
+.DS_Store
+
+# Docker
+docker/
+*.log
+.env
+*.map
+
+# crash reports
+crash-*
+
+# Python tooling
+.venv/
+venv/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Test artifacts
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Orchestrator runtime
+orchestrator.db
+orchestrator.db-shm
+orchestrator.db-wal

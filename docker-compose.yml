@@ -1,0 +1,100 @@
+# Docker Compose for bitcoinfuzz monitoring infrastructure.
+#
+# Usage (from this repo, with a sibling bitcoinfuzz checkout):
+#   export BITCOINFUZZ_REPO="$(cd ../bitcoinfuzz && pwd)"
+#   export ORCHESTRATOR_HOST_DATA_DIR="${BITCOINFUZZ_REPO}/docker"
+#   export DOCKER_GID="$(stat -c '%g' /var/run/docker.sock)"
+#   export ORCHESTRATOR_API_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+#   mkdir -p "${BITCOINFUZZ_REPO}/docker"
+#   docker compose up --build
+#
+# This brings up the orchestrator, Prometheus, and Alertmanager.
+# Fuzz targets are NOT defined here — they come from bitcoinfuzz's
+# docker-compose.yml (mounted via BITCOINFUZZ_REPO).
+
+services:
+  # --- Orchestrator (Python/FastAPI) ---
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    ports:
+      - "8000:8000"     # REST API
+      - "9091:9091"     # Prometheus metrics endpoint
+    volumes:
+      # Shared fuzzing data volume from the bitcoinfuzz repo.
+      # The orchestrator reads this at /app/data. Campaign containers are
+      # created via the host Docker daemon, so bind-mounts must use the
+      # host path (ORCHESTRATOR_HOST_DATA_DIR), not /app/data.
+      - ${BITCOINFUZZ_REPO:-../bitcoinfuzz}/docker:/app/data
+      # Fuzz-target definitions (NOT this infra compose file)
+      - ${BITCOINFUZZ_REPO:-../bitcoinfuzz}/docker-compose.yml:/app/targets-compose.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - orchestrator-db:/app/db
+    # Non-root UID 1001 needs the host docker.sock group or docker-py
+    # raises PermissionError. Numeric GID is enough; the group need not
+    # exist inside the image.  stat -c '%g' /var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:?Set DOCKER_GID to the GID of /var/run/docker.sock}"
+    environment:
+      - ORCHESTRATOR_DATA_DIR=/app/data
+      # Host path the Docker daemon bind-mounts into campaign containers.
+      # Prefer an absolute BITCOINFUZZ_REPO so this is not relative to the
+      # daemon's cwd. Override with ORCHESTRATOR_HOST_DATA_DIR if needed.
+      - ORCHESTRATOR_HOST_DATA_DIR=${ORCHESTRATOR_HOST_DATA_DIR:-${BITCOINFUZZ_REPO:-../bitcoinfuzz}/docker}
+      - ORCHESTRATOR_DB_PATH=/app/db/orchestrator.db
+      - ORCHESTRATOR_COMPOSE_FILE=/app/targets-compose.yml
+      - ORCHESTRATOR_HOST=0.0.0.0
+      - ORCHESTRATOR_PORT=8000
+      - ORCHESTRATOR_METRICS_PORT=9091
+      # Compose publishes 8000 on every interface, so the token is the only
+      # thing standing between the network and the container-control routes.
+      # Required here for that reason; generate with
+      #   python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
+      - ORCHESTRATOR_API_TOKEN=${ORCHESTRATOR_API_TOKEN:?Set ORCHESTRATOR_API_TOKEN; Compose binds 0.0.0.0}
+      - ORCHESTRATOR_CORS_ORIGINS=${ORCHESTRATOR_CORS_ORIGINS:-http://127.0.0.1:8000,http://localhost:8000}
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  # --- Prometheus ---
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=90d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  # --- Alertmanager ---
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+volumes:
+  orchestrator-db:
+  prometheus-data:
+
+networks:
+  monitoring:
+    driver: bridge

@@ -1,0 +1,79 @@
+# Minimal fuzz-target compose fixture for unit tests.
+# Mirrors the shape of bitcoinfuzz/docker-compose.yml (build.args.FUZZ + CXXFLAGS).
+services:
+  script:
+    build:
+      context: .
+      args:
+        CXXFLAGS: "-DBITCOIN_CORE -DRUST_BITCOIN"
+        FUZZ: script
+    environment:
+      MODULES: ${MODULES:-}
+    volumes:
+      - ./docker:/app/data
+
+  deserialize_block:
+    build:
+      context: .
+      args:
+        CXXFLAGS: "-DBITCOIN_CORE -DRUST_BITCOIN -DBTCD"
+        FUZZ: deserialize_block
+    environment:
+      MODULES: ${MODULES:-}
+    volumes:
+      - ./docker:/app/data
+
+  descriptor_parse:
+    build:
+      context: .
+      args:
+        CXXFLAGS: "-DBITCOIN_CORE -DNBITCOIN -DRUST_MINISCRIPT -DEMBIT"
+        FUZZ: descriptor_parse
+    environment:
+      MODULES: ${MODULES:-}
+      LIBFUZZ_DETECT_LEAKS: 0
+      ASAN_OPTIONS: detect_leaks=0
+    volumes:
+      - ./docker:/app/data
+
+  psbt_parse:
+    build:
+      context: .
+      args:
+        CXXFLAGS: "-DBITCOIN_CORE -DRUST_BITCOIN -DBTCD -DNBITCOIN"
+        FUZZ: psbt_parse
+    environment:
+      MODULES: ${MODULES:-}
+    volumes:
+      - ./docker:/app/data
+
+  sign_schnorr:
+    build:
+      context: .
+      args:
+        CXXFLAGS: "-DBITCOIN_CORE -DRUST_BITCOIN -DSECP256K1"
+        FUZZ: sign_schnorr
+    environment:
+      MODULES: ${MODULES:-}
+    volumes:
+      - ./docker:/app/data
+
+  ecdh:
+    build:
+      context: .
+      args:
+        CXXFLAGS: "-DBITCOIN_CORE -DRUST_BITCOIN -DSECP256K1"
+        FUZZ: ecdh
+    environment:
+      MODULES: ${MODULES:-}
+    volumes:
+      - ./docker:/app/data
+
+  # Infra-style services without build.args.FUZZ must be ignored by the parser
+  orchestrator:
+    image: bitcoinfuzz-orchestrator:local
+    ports:
+      - "8000:8000"
+
+  prometheus:
+    image: prom/prometheus:v2.52.0

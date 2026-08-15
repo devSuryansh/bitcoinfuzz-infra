@@ -1,0 +1,32 @@
+# Prometheus configuration for bitcoinfuzz monitoring.
+#
+# A single static target. Campaigns do not get their own scrape targets:
+# they all export through the orchestrator's shared exporter, and every
+# series carries target + campaign_id labels to tell them apart.
+
+global:
+  scrape_interval: 5s        # Match proposal: <5s metric scrape latency
+  evaluation_interval: 15s
+  scrape_timeout: 5s
+
+# Load alerting rules
+rule_files:
+  - "alerts.yml"
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "alertmanager:9093"
+
+# Scrape configurations
+scrape_configs:
+  # Single scrape of the shared exporter. Every campaign series already
+  # carries target + campaign_id labels. Do not add a second job for the
+  # same URL: each extra target re-scrapes every series and duplicates
+  # alerts that do not filter on job.
+  - job_name: "orchestrator"
+    static_configs:
+      - targets: ["orchestrator:9091"]
+    metrics_path: "/metrics"
